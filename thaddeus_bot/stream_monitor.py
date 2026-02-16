@@ -83,6 +83,8 @@ class StreamMonitor:
                 continue
 
             text = self._render(template, platform, channel_name, channel, title, url, is_live)
+            if is_live:
+                await self._bot.send_message(chat_id=self._config.telegram.chat_id, text=url)
             await self._bot.send_message(chat_id=self._config.telegram.chat_id, text=text)
             LOG.info("Sent %s notification for %s", "live" if is_live else "offline", sub_id)
 
@@ -104,6 +106,8 @@ class StreamMonitor:
             raise ValueError(f"No {template_key} configured for {sub_id}")
 
         text = self._render(template, platform, channel_name, channel, title, url, is_live)
+        if is_live:
+            await self._bot.send_message(chat_id=self._config.telegram.chat_id, text=url)
         await self._bot.send_message(chat_id=self._config.telegram.chat_id, text=text)
         self._state[sub_id] = is_live
         self._save_state()
@@ -193,16 +197,12 @@ class StreamMonitor:
         url: str,
         is_live: bool,
     ) -> str:
-        text = template.format(
+        return template.format(
             platform=platform,
             display_name=display_name,
             channel=channel,
             title=title or "",
             status="live" if is_live else "offline",
             url=url,
-        )
-
-        if url not in text:
-            text = f"{text}\n{url}".strip()
-        return text
+        ).strip()
 
