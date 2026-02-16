@@ -1,0 +1,46 @@
+{
+  "telegram": {
+    "bot_token": "",
+    "chat_id": ""
+  },
+  "twitch": {
+    "client_id": "",
+    "client_secret": ""
+  },
+  "youtube": {
+    "api_key": ""
+  },
+  "poll_interval_seconds": 60,
+  "state_file": "state.json",
+  "notify_on_startup": false,
+  "subscriptions": [
+    {
+      "id": "twitch_shroud",
+      "platform": "twitch",
+      "channel": "shroud",
+      "display_name": "Shroud",
+      "live_message": [
+        "{display_name} is LIVE on Twitch: {url}",
+        "{display_name} just started streaming on Twitch. Watch here: {url}"
+      ],
+      "offline_message": [
+        "{display_name} is now offline on Twitch.",
+        "{display_name}'s Twitch stream has ended."
+      ]
+    },
+    {
+      "id": "youtube_uc_x5",
+      "platform": "youtube",
+      "channel": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+      "display_name": "Google for Developers",
+      "live_message": [
+        "{display_name} just went live on YouTube. Stream: {url}",
+        "{display_name} is live on YouTube now: {url}"
+      ],
+      "offline_message": [
+        "{display_name} ended their YouTube stream.",
+        "{display_name} is offline on YouTube now."
+      ]
+    }
+  ]
+}
