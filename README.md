@@ -62,6 +62,14 @@ python -m thaddeus_bot online subscription_id
 python -m thaddeus_bot offline subscription_id
 ```
 
+When the bot is running with `python -m thaddeus_bot` (or `run_bot.bat`), you can type the same commands directly in that terminal:
+
+```text
+online subscription_id
+offline subscription_id
+exit
+```
+
 These commands:
 - Load `config.json`
 - Find the subscription by `id`
