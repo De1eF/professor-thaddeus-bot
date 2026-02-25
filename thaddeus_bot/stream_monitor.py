@@ -86,12 +86,12 @@ class StreamMonitor:
             if is_live:
                 await self._bot.send_message(
                     chat_id=self._config.telegram.chat_id,
-                    message_thread_id=self._config.telegram.message_thread_id,
+                    message_thread_id=self._config.telegram.stream_message_thread_id,
                     text=url,
                 )
             await self._bot.send_message(
                 chat_id=self._config.telegram.chat_id,
-                message_thread_id=self._config.telegram.message_thread_id,
+                message_thread_id=self._config.telegram.stream_message_thread_id,
                 text=text,
             )
             LOG.info("Sent %s notification for %s", "live" if is_live else "offline", sub_id)

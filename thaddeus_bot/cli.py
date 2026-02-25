@@ -31,7 +31,7 @@ def send_message(text: str) -> None:
     asyncio.run(
         bot.send_message(
             chat_id=config.telegram.chat_id,
-            message_thread_id=config.telegram.message_thread_id,
+            message_thread_id=config.telegram.stream_message_thread_id,
             text=text,
         )
     )

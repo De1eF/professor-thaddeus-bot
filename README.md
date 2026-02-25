@@ -37,7 +37,8 @@ The app loads config from `THADDEUS_CONFIG_URL` on startup and on `/reload`.
 - `-1001234567890` (chat only)
 - `-1001234567890_2111` (chat + topic/thread)
 
-You can also set topic explicitly with `telegram.message_thread_id`.
+You can set stream update topic explicitly with `telegram.stream_message_thread_id`.
+Legacy `telegram.message_thread_id` is still supported for backward compatibility.
 
 ## Custom Commands
 
@@ -60,7 +61,7 @@ Example:
   "telegram": {
     "bot_token": "YOUR_BOT_TOKEN",
     "chat_id": "-1001234567890",
-    "message_thread_id": 2111
+    "stream_message_thread_id": 2111
   },
   "twitch": {
     "client_id": "YOUR_TWITCH_CLIENT_ID",
@@ -94,4 +95,3 @@ Example:
   ]
 }
 ```
-

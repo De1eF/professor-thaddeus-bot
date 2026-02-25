@@ -16,7 +16,6 @@ FILE_REF_PATTERN = re.compile(r"file:([^\s]+)")
 async def _ensure_allowed_chat(
     update: Update,
     allowed_chat_id: str,
-    allowed_thread_id: int | None,
 ) -> bool:
     chat = update.effective_chat
     if chat is None:
@@ -39,30 +38,14 @@ async def _ensure_allowed_chat(
             )
         return False
 
-    if allowed_thread_id is not None:
-        # Telegram does not always include message_thread_id for every thread-like context.
-        # Accept same-chat commands when thread id is missing to avoid false negatives.
-        if incoming_thread_id is not None and incoming_thread_id != allowed_thread_id:
-            LOG.warning(
-                "Rejected command: thread mismatch (chat=%s allowed_thread=%s got_thread=%s)",
-                incoming_chat_id,
-                allowed_thread_id,
-                incoming_thread_id,
-            )
-            if update.effective_message:
-                await update.effective_message.reply_text(
-                    "Nope, I refuse to execute that command in this topic."
-                )
-            return False
     return True
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     monitor: StreamMonitor = context.application.bot_data["monitor"]
     allowed_chat_id: str = context.application.bot_data["allowed_chat_id"]
-    allowed_thread_id: int | None = context.application.bot_data["allowed_thread_id"]
 
-    if not await _ensure_allowed_chat(update, allowed_chat_id, allowed_thread_id):
+    if not await _ensure_allowed_chat(update, allowed_chat_id):
         return
 
     await update.effective_message.reply_text("Checking subscription status...")
@@ -73,8 +56,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     application = context.application
     allowed_chat_id: str = application.bot_data["allowed_chat_id"]
-    allowed_thread_id: int | None = application.bot_data["allowed_thread_id"]
-    if not await _ensure_allowed_chat(update, allowed_chat_id, allowed_thread_id):
+    if not await _ensure_allowed_chat(update, allowed_chat_id):
         return
 
     lock: asyncio.Lock = application.bot_data["reload_lock"]
@@ -108,7 +90,6 @@ async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         application.bot_data["dynamic_commands"] = new_config.dynamic_commands
         application.bot_data["monitor"] = monitor
         application.bot_data["allowed_chat_id"] = new_config.telegram.chat_id
-        application.bot_data["allowed_thread_id"] = new_config.telegram.message_thread_id
         application.bot_data["monitor_task"] = application.create_task(monitor.run_forever())
         await _refresh_bot_commands(application)
 
@@ -144,14 +125,13 @@ async def dynamic_command_router(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     allowed_chat_id: str = application.bot_data["allowed_chat_id"]
-    allowed_thread_id: int | None = application.bot_data["allowed_thread_id"]
-    if not await _ensure_allowed_chat(update, allowed_chat_id, allowed_thread_id):
+    if not await _ensure_allowed_chat(update, allowed_chat_id):
         return
 
     target_thread_id = (
         update.effective_message.message_thread_id
-        if update.effective_message is not None and update.effective_message.message_thread_id is not None
-        else allowed_thread_id
+        if update.effective_message is not None
+        else None
     )
 
     file_refs = FILE_REF_PATTERN.findall(template)
@@ -237,7 +217,6 @@ def run_bot(
     application.bot_data["dynamic_commands"] = config.dynamic_commands
     application.bot_data["monitor"] = monitor
     application.bot_data["allowed_chat_id"] = config.telegram.chat_id
-    application.bot_data["allowed_thread_id"] = config.telegram.message_thread_id
     application.bot_data["reload_lock"] = asyncio.Lock()
 
     application.add_handler(CommandHandler("status", status_command))

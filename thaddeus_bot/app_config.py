@@ -12,7 +12,7 @@ import requests
 class TelegramConfig:
     bot_token: str
     chat_id: str
-    message_thread_id: int | None
+    stream_message_thread_id: int | None
 
 
 @dataclass
@@ -51,16 +51,19 @@ def load_config() -> AppConfig:
     twitch_payload = payload.get("twitch")
     youtube_payload = payload.get("youtube")
     chat_id, inferred_thread_id = _parse_chat_and_thread(telegram_payload["chat_id"])
-    explicit_thread_id = telegram_payload.get("message_thread_id")
-    message_thread_id = (
-        int(explicit_thread_id) if explicit_thread_id is not None else inferred_thread_id
+    explicit_stream_thread_id = telegram_payload.get("stream_message_thread_id")
+    legacy_thread_id = telegram_payload.get("message_thread_id")
+    stream_message_thread_id = (
+        int(explicit_stream_thread_id)
+        if explicit_stream_thread_id is not None
+        else int(legacy_thread_id) if legacy_thread_id is not None else inferred_thread_id
     )
 
     return AppConfig(
         telegram=TelegramConfig(
             bot_token=telegram_payload["bot_token"],
             chat_id=chat_id,
-            message_thread_id=message_thread_id,
+            stream_message_thread_id=stream_message_thread_id,
         ),
         twitch=TwitchConfig(
             client_id=twitch_payload["client_id"],
