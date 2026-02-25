@@ -15,37 +15,26 @@ FILE_REF_PATTERN = re.compile(r"file:([^\s]+)")
 
 async def _ensure_allowed_chat(
     update: Update,
-    allowed_chat_id: str,
 ) -> bool:
     chat = update.effective_chat
     if chat is None:
         return False
 
-    incoming_chat_id = str(chat.id)
     message = update.effective_message
     incoming_thread_id = message.message_thread_id if message is not None else None
-
-    if incoming_chat_id != allowed_chat_id:
-        LOG.warning(
-            "Rejected command: chat mismatch (allowed=%s got=%s thread=%s)",
-            allowed_chat_id,
-            incoming_chat_id,
-            incoming_thread_id,
-        )
-        if update.effective_message:
-            await update.effective_message.reply_text(
-                "Nope, I refuse to execute that command in this chat."
-            )
-        return False
+    LOG.debug(
+        "Accepted command in chat=%s thread=%s",
+        str(chat.id),
+        incoming_thread_id,
+    )
 
     return True
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     monitor: StreamMonitor = context.application.bot_data["monitor"]
-    allowed_chat_id: str = context.application.bot_data["allowed_chat_id"]
 
-    if not await _ensure_allowed_chat(update, allowed_chat_id):
+    if not await _ensure_allowed_chat(update):
         return
 
     await update.effective_message.reply_text("Checking subscription status...")
@@ -55,8 +44,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     application = context.application
-    allowed_chat_id: str = application.bot_data["allowed_chat_id"]
-    if not await _ensure_allowed_chat(update, allowed_chat_id):
+    if not await _ensure_allowed_chat(update):
         return
 
     lock: asyncio.Lock = application.bot_data["reload_lock"]
@@ -89,7 +77,6 @@ async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         application.bot_data["config"] = new_config
         application.bot_data["dynamic_commands"] = new_config.dynamic_commands
         application.bot_data["monitor"] = monitor
-        application.bot_data["allowed_chat_id"] = new_config.telegram.chat_id
         application.bot_data["monitor_task"] = application.create_task(monitor.run_forever())
         await _refresh_bot_commands(application)
 
@@ -124,8 +111,10 @@ async def dynamic_command_router(update: Update, context: ContextTypes.DEFAULT_T
     if template is None:
         return
 
-    allowed_chat_id: str = application.bot_data["allowed_chat_id"]
-    if not await _ensure_allowed_chat(update, allowed_chat_id):
+    if not await _ensure_allowed_chat(update):
+        return
+    target_chat_id = str(update.effective_chat.id) if update.effective_chat is not None else None
+    if target_chat_id is None:
         return
 
     target_thread_id = (
@@ -141,14 +130,14 @@ async def dynamic_command_router(update: Update, context: ContextTypes.DEFAULT_T
         except Exception:
             LOG.exception("Failed to fetch dynamic command resource: %s", ref)
             await context.bot.send_message(
-                chat_id=allowed_chat_id,
+                chat_id=target_chat_id,
                 message_thread_id=target_thread_id,
                 text=f"Failed to load resource: {ref}",
             )
             continue
 
         await context.bot.send_document(
-            chat_id=allowed_chat_id,
+            chat_id=target_chat_id,
             message_thread_id=target_thread_id,
             document=InputFile(BytesIO(content), filename=filename),
         )
@@ -156,7 +145,7 @@ async def dynamic_command_router(update: Update, context: ContextTypes.DEFAULT_T
     text_response = FILE_REF_PATTERN.sub("", template).strip()
     if text_response:
         await context.bot.send_message(
-            chat_id=allowed_chat_id,
+            chat_id=target_chat_id,
             message_thread_id=target_thread_id,
             text=text_response,
         )
@@ -216,7 +205,6 @@ def run_bot(
     application.bot_data["config"] = config
     application.bot_data["dynamic_commands"] = config.dynamic_commands
     application.bot_data["monitor"] = monitor
-    application.bot_data["allowed_chat_id"] = config.telegram.chat_id
     application.bot_data["reload_lock"] = asyncio.Lock()
 
     application.add_handler(CommandHandler("status", status_command))
