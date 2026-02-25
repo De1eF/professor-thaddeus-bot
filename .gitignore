@@ -1,5 +1,7 @@
 config.json
+config.example.json
 state.json
+.env
 __pycache__/
 *.pyc
 .venv/

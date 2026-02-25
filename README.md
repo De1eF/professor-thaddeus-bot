@@ -1,17 +1,8 @@
 # professor-thaddeus-bot
 
-Config-driven Telegram bot that watches Twitch and YouTube channels and posts notifications when each channel goes live or offline.
+Telegram bot that watches Twitch/YouTube channels and posts live/offline updates.
 
-## Features
-
-- Tracks any mix of Twitch and YouTube subscriptions.
-- Per-subscription live/offline message templates (single message or list).
-- Always includes a stream link in every message.
-- Poll-based monitoring with configurable interval.
-- Persists stream state (`state.json`) to avoid duplicate notifications.
-- Supports `/status` command to poll Twitch/YouTube APIs and report current state per subscription.
-
-## Setup
+## Run
 
 1. Install dependencies:
 
@@ -19,77 +10,88 @@ Config-driven Telegram bot that watches Twitch and YouTube channels and posts no
 pip install -r requirements.txt
 ```
 
-2. Copy config and edit values:
+2. Create `.env` from `.env_example` and set values:
 
-```bash
-copy config.example.json config.json
-```
+- `THADDEUS_CONFIG_URL`: URL to remote `config.json`
+- `THADDEUS_RESOURCES_URL`: URL to remote resources folder (for command files)
+- `THADDEUS_GIT_USERNAME`: optional
+- `THADDEUS_GIT_TOKEN`: optional
 
-3. Set your real values in `config.json`:
-
-- `telegram.bot_token`: Telegram bot token from BotFather.
-- `telegram.chat_id`: Chat or user id where notifications are sent.
-- `twitch.client_id` and `twitch.client_secret`: Twitch app credentials.
-- `youtube.api_key`: YouTube Data API key.
-
-4. Start the bot:
+3. Start:
 
 ```bash
 python main.py
 ```
 
-Send a one-off message to the configured Telegram chat:
+4. Send a one-off message (optional):
 
 ```bash
-python main.py message "Hello from CLI"
+python main.py message "Hello"
 ```
 
-## One-command launcher (Windows)
+## Remote Config
 
-Run:
+The app loads config from `THADDEUS_CONFIG_URL` on startup and on `/reload`.
 
-```bat
-run_bot.bat
+`telegram.chat_id` supports:
+- `-1001234567890` (chat only)
+- `-1001234567890_2111` (chat + topic/thread)
+
+You can also set topic explicitly with `telegram.message_thread_id`.
+
+## Custom Commands
+
+Set `dynamic_commands` in remote config.
+
+Each command has:
+- `command`: command name (with or without `/`)
+- `message`: text to send
+
+If `message` contains `file:relative/path.ext`, the bot fetches that file from `THADDEUS_RESOURCES_URL` and sends it.
+
+Example:
+- `/rules` -> sends text
+- `/guide` with `file:getting-started.pdf` -> sends that PDF
+
+## Sample `config.json`
+
+```json
+{
+  "telegram": {
+    "bot_token": "YOUR_BOT_TOKEN",
+    "chat_id": "-1001234567890",
+    "message_thread_id": 2111
+  },
+  "twitch": {
+    "client_id": "YOUR_TWITCH_CLIENT_ID",
+    "client_secret": "YOUR_TWITCH_CLIENT_SECRET"
+  },
+  "youtube": {
+    "api_key": "YOUR_YOUTUBE_API_KEY"
+  },
+  "poll_interval_seconds": 60,
+  "state_file": "state.json",
+  "notify_on_startup": false,
+  "subscriptions": [
+    {
+      "id": "criticalrole",
+      "platform": "twitch",
+      "channel": "criticalrole",
+      "display_name": "Critical Role",
+      "live_message": "Critical Role is live: {url}",
+      "offline_message": "Critical Role is offline."
+    }
+  ],
+  "dynamic_commands": [
+    {
+      "command": "rules",
+      "message": "Be respectful. No spam."
+    },
+    {
+      "command": "guide",
+      "message": "Start here: file:getting-started.pdf"
+    }
+  ]
+}
 ```
 
-This script will:
-- Ensure Python is installed (installs via `winget` if missing).
-- Create `.venv` if needed.
-- Install/update dependencies from `requirements.txt`.
-- Start the root entrypoint (`python main.py`).
-
-## Docker CLI Message Command
-
-With the container running, send a message to the configured chat:
-
-```bash
-docker compose exec bot python main.py message "Hello from Docker"
-```
-
-## Config template variables
-
-Message templates support:
-
-- `{platform}`
-- `{display_name}`
-- `{channel}`
-- `{title}`
-- `{status}`
-- `{url}`
-
-If `{url}` is not in your template, the bot appends it automatically.
-
-For each subscription, `live_message` and `offline_message` can be:
-- A single string template.
-- A list of string templates (one is chosen randomly for each notification).
-
-## Subscription format
-
-Each item in `subscriptions` uses:
-
-- `id`: Unique id for state tracking.
-- `platform`: `twitch` or `youtube`.
-- `channel`: Twitch login name or YouTube channel id.
-- `display_name`: Optional display name.
-- `live_message`: String or list of strings for when stream becomes live.
-- `offline_message`: String or list of strings for when stream becomes offline.
