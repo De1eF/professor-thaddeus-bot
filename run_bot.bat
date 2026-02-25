@@ -55,6 +55,6 @@ if errorlevel 1 (
 )
 
 echo Launching bot window...
-start "Professor Thaddeus Bot CLI" /D "%~dp0" cmd /k ""%~dp0.venv\Scripts\python.exe" -m thaddeus_bot %*"
+start "Professor Thaddeus Bot CLI" /D "%~dp0" cmd /k ""%~dp0.venv\Scripts\python.exe" "%~dp0main.py" %*"
 
 exit /b 0
