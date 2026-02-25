@@ -195,6 +195,8 @@ def _load_dotenv(path: Path) -> None:
 
 def _parse_chat_and_thread(raw_chat_id: Any) -> tuple[str, int | None]:
     value = str(raw_chat_id).strip()
+    if value.startswith("#"):
+        value = value[1:].strip()
     if "_" not in value:
         return value, None
 
