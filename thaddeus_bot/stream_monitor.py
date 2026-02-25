@@ -88,31 +88,6 @@ class StreamMonitor:
             await self._bot.send_message(chat_id=self._config.telegram.chat_id, text=text)
             LOG.info("Sent %s notification for %s", "live" if is_live else "offline", sub_id)
 
-    async def simulate_event(self, subscription_id: str, is_live: bool) -> str:
-        sub = self._find_subscription(subscription_id)
-        if sub is None:
-            raise ValueError(f"Subscription id not found: {subscription_id}")
-
-        sub_id = sub["id"]
-        platform = sub["platform"].lower()
-        channel = sub["channel"]
-        channel_name = sub.get("display_name", channel)
-        url = self._default_stream_url(platform, channel)
-        title = "Simulated event"
-
-        template_key = "live_message" if is_live else "offline_message"
-        template = self._pick_template(sub.get(template_key))
-        if not template:
-            raise ValueError(f"No {template_key} configured for {sub_id}")
-
-        text = self._render(template, platform, channel_name, channel, title, url, is_live)
-        if is_live:
-            await self._bot.send_message(chat_id=self._config.telegram.chat_id, text=url)
-        await self._bot.send_message(chat_id=self._config.telegram.chat_id, text=text)
-        self._state[sub_id] = is_live
-        self._save_state()
-        return f"Simulated {'online' if is_live else 'offline'} event for {sub_id}."
-
     def build_status_report(self) -> str:
         if not self._config.subscriptions:
             return "No subscriptions configured."
@@ -159,20 +134,6 @@ class StreamMonitor:
                 raise RuntimeError("YouTube subscription found but YouTube API config is missing")
             return self._youtube.check_live(channel)
 
-        raise ValueError(f"Unsupported platform: {platform}")
-
-    def _find_subscription(self, subscription_id: str) -> dict[str, Any] | None:
-        for sub in self._config.subscriptions:
-            if sub.get("id") == subscription_id:
-                return sub
-        return None
-
-    @staticmethod
-    def _default_stream_url(platform: str, channel: str) -> str:
-        if platform == "twitch":
-            return f"https://www.twitch.tv/{channel}"
-        if platform == "youtube":
-            return f"https://www.youtube.com/channel/{channel}/live"
         raise ValueError(f"Unsupported platform: {platform}")
 
     @staticmethod

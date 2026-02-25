@@ -1,0 +1,9 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+config.json
+state.json
+run_bot.bat
+README.md

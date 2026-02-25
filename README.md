@@ -10,7 +10,6 @@ Config-driven Telegram bot that watches Twitch and YouTube channels and posts no
 - Poll-based monitoring with configurable interval.
 - Persists stream state (`state.json`) to avoid duplicate notifications.
 - Supports `/status` command to poll Twitch/YouTube APIs and report current state per subscription.
-- Supports CLI simulation commands for forced online/offline subscription events.
 
 ## Setup
 
@@ -36,7 +35,13 @@ copy config.example.json config.json
 4. Start the bot:
 
 ```bash
-python -m thaddeus_bot
+python main.py
+```
+
+Send a one-off message to the configured Telegram chat:
+
+```bash
+python main.py message "Hello from CLI"
 ```
 
 ## One-command launcher (Windows)
@@ -51,30 +56,15 @@ This script will:
 - Ensure Python is installed (installs via `winget` if missing).
 - Create `.venv` if needed.
 - Install/update dependencies from `requirements.txt`.
-- Start `thaddeus_bot` (`python -m thaddeus_bot`).
+- Start the root entrypoint (`python main.py`).
 
-## Console Simulation Commands
+## Docker CLI Message Command
 
-Use the package CLI to simulate subscription transitions:
+With the container running, send a message to the configured chat:
 
 ```bash
-python -m thaddeus_bot online subscription_id
-python -m thaddeus_bot offline subscription_id
+docker compose exec bot python main.py message "Hello from Docker"
 ```
-
-When the bot is running with `python -m thaddeus_bot` (or `run_bot.bat`), you can type the same commands directly in that terminal:
-
-```text
-online subscription_id
-offline subscription_id
-exit
-```
-
-These commands:
-- Load `config.json`
-- Find the subscription by `id`
-- Send the configured `live_message` or `offline_message` to Telegram
-- Update `state.json` for that subscription
 
 ## Config template variables
 

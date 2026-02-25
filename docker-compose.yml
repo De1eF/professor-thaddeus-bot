@@ -1,0 +1,10 @@
+services:
+  bot:
+    build: .
+    container_name: professor-thaddeus-bot
+    restart: unless-stopped
+    volumes:
+      - ./main.py:/app/main.py:ro
+      - ./thaddeus_bot:/app/thaddeus_bot:ro
+      - ./config.json:/app/config.json:ro
+      - ./state.json:/app/state.json
