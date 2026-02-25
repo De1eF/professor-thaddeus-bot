@@ -22,7 +22,17 @@ async def _ensure_allowed_chat(
     if chat is None:
         return False
 
-    if str(chat.id) != allowed_chat_id:
+    incoming_chat_id = str(chat.id)
+    message = update.effective_message
+    incoming_thread_id = message.message_thread_id if message is not None else None
+
+    if incoming_chat_id != allowed_chat_id:
+        LOG.warning(
+            "Rejected command: chat mismatch (allowed=%s got=%s thread=%s)",
+            allowed_chat_id,
+            incoming_chat_id,
+            incoming_thread_id,
+        )
         if update.effective_message:
             await update.effective_message.reply_text(
                 "Nope, I refuse to execute that command in this chat."
@@ -30,9 +40,15 @@ async def _ensure_allowed_chat(
         return False
 
     if allowed_thread_id is not None:
-        message = update.effective_message
-        incoming_thread_id = message.message_thread_id if message is not None else None
-        if incoming_thread_id != allowed_thread_id:
+        # Telegram does not always include message_thread_id for every thread-like context.
+        # Accept same-chat commands when thread id is missing to avoid false negatives.
+        if incoming_thread_id is not None and incoming_thread_id != allowed_thread_id:
+            LOG.warning(
+                "Rejected command: thread mismatch (chat=%s allowed_thread=%s got_thread=%s)",
+                incoming_chat_id,
+                allowed_thread_id,
+                incoming_thread_id,
+            )
             if update.effective_message:
                 await update.effective_message.reply_text(
                     "Nope, I refuse to execute that command in this topic."
@@ -132,6 +148,12 @@ async def dynamic_command_router(update: Update, context: ContextTypes.DEFAULT_T
     if not await _ensure_allowed_chat(update, allowed_chat_id, allowed_thread_id):
         return
 
+    target_thread_id = (
+        update.effective_message.message_thread_id
+        if update.effective_message is not None and update.effective_message.message_thread_id is not None
+        else allowed_thread_id
+    )
+
     file_refs = FILE_REF_PATTERN.findall(template)
     for ref in file_refs:
         try:
@@ -140,14 +162,14 @@ async def dynamic_command_router(update: Update, context: ContextTypes.DEFAULT_T
             LOG.exception("Failed to fetch dynamic command resource: %s", ref)
             await context.bot.send_message(
                 chat_id=allowed_chat_id,
-                message_thread_id=allowed_thread_id,
+                message_thread_id=target_thread_id,
                 text=f"Failed to load resource: {ref}",
             )
             continue
 
         await context.bot.send_document(
             chat_id=allowed_chat_id,
-            message_thread_id=allowed_thread_id,
+            message_thread_id=target_thread_id,
             document=InputFile(BytesIO(content), filename=filename),
         )
 
@@ -155,7 +177,7 @@ async def dynamic_command_router(update: Update, context: ContextTypes.DEFAULT_T
     if text_response:
         await context.bot.send_message(
             chat_id=allowed_chat_id,
-            message_thread_id=allowed_thread_id,
+            message_thread_id=target_thread_id,
             text=text_response,
         )
 
