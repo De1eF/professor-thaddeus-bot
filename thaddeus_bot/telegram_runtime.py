@@ -42,47 +42,6 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.effective_message.reply_text(report)
 
 
-async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    application = context.application
-    if not await _ensure_allowed_chat(update):
-        return
-
-    lock: asyncio.Lock = application.bot_data["reload_lock"]
-    async with lock:
-        await update.effective_message.reply_text("Reloading configuration...")
-
-        try:
-            new_config = await asyncio.to_thread(load_config)
-        except Exception:
-            LOG.exception("Failed to reload configuration")
-            await update.effective_message.reply_text("Reload failed: unable to load remote config.")
-            return
-
-        existing_config = application.bot_data["config"]
-        if new_config.telegram.bot_token != existing_config.telegram.bot_token:
-            await update.effective_message.reply_text(
-                "Reload failed: bot token changed. Restart the app to apply token changes."
-            )
-            return
-
-        old_task: asyncio.Task | None = application.bot_data.get("monitor_task")
-        if old_task:
-            old_task.cancel()
-            try:
-                await old_task
-            except asyncio.CancelledError:
-                pass
-
-        monitor = StreamMonitor(new_config, bot=application.bot)
-        application.bot_data["config"] = new_config
-        application.bot_data["dynamic_commands"] = new_config.dynamic_commands
-        application.bot_data["monitor"] = monitor
-        application.bot_data["monitor_task"] = application.create_task(monitor.run_forever())
-        await _refresh_bot_commands(application)
-
-        await update.effective_message.reply_text("Configuration reloaded.")
-
-
 def _extract_command_name(update: Update) -> str | None:
     message = update.effective_message
     if message is None or not message.text:
@@ -102,7 +61,7 @@ def _extract_command_name(update: Update) -> str | None:
 
 async def dynamic_command_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     command_name = _extract_command_name(update)
-    if command_name is None or command_name in {"status", "reload"}:
+    if command_name is None or command_name == "status":
         return
 
     application = context.application
@@ -161,7 +120,6 @@ async def _refresh_bot_commands(application: Application) -> None:
     dynamic_commands: dict[str, str] = application.bot_data["dynamic_commands"]
     commands = [
         BotCommand("status", "Show live/offline status"),
-        BotCommand("reload", "Reload remote configuration"),
     ]
     commands.extend(
         BotCommand(name, "Dynamic command")
@@ -181,6 +139,31 @@ async def on_shutdown(application: Application) -> None:
             pass
 
 
+def _log_startup_config(config) -> None:
+    LOG.info(
+        "Startup config: chat_id=%s thread_id=%s poll_interval_seconds=%s log_polling=%s state_file=%s subscriptions=%s dynamic_commands=%s twitch_enabled=%s youtube_enabled=%s",
+        config.telegram.chat_id,
+        config.telegram.stream_message_thread_id,
+        config.poll_interval_seconds,
+        config.log_polling,
+        str(config.state_file),
+        len(config.subscriptions),
+        len(config.dynamic_commands),
+        bool(config.twitch),
+        bool(config.youtube),
+    )
+    for sub in config.subscriptions:
+        LOG.info(
+            "Subscription: id=%s platform=%s channel=%s display_name=%s",
+            sub.get("id"),
+            sub.get("platform"),
+            sub.get("channel"),
+            sub.get("display_name", sub.get("channel")),
+        )
+    if config.dynamic_commands:
+        LOG.info("Dynamic commands: %s", ", ".join(sorted(config.dynamic_commands.keys())))
+
+
 def run_bot(
 ) -> None:
     logging.basicConfig(
@@ -193,6 +176,7 @@ def run_bot(
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     config = load_config()
+    _log_startup_config(config)
     application = (
         Application.builder()
         .token(config.telegram.bot_token)
@@ -205,10 +189,8 @@ def run_bot(
     application.bot_data["config"] = config
     application.bot_data["dynamic_commands"] = config.dynamic_commands
     application.bot_data["monitor"] = monitor
-    application.bot_data["reload_lock"] = asyncio.Lock()
 
     application.add_handler(CommandHandler("status", status_command))
-    application.add_handler(CommandHandler("reload", reload_command))
     application.add_handler(MessageHandler(filters.COMMAND, dynamic_command_router))
     # Python 3.14 no longer creates a default event loop for the main thread.
     # python-telegram-bot 21.x still expects one to exist when run_polling starts.

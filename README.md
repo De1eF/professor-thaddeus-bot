@@ -31,7 +31,7 @@ python main.py message "Hello"
 
 ## Remote Config
 
-The app loads config from `THADDEUS_CONFIG_URL` on startup and on `/reload`.
+The app loads config from `THADDEUS_CONFIG_URL` on startup.
 
 `telegram.chat_id` supports:
 - `-1001234567890` (chat only)
@@ -71,8 +71,8 @@ Example:
     "api_key": "YOUR_YOUTUBE_API_KEY"
   },
   "poll_interval_seconds": 60,
-  "state_file": "state.json",
-  "notify_on_startup": false,
+  "log_polling": true,
+  "state_file": "notify.json",
   "subscriptions": [
     {
       "id": "criticalrole",

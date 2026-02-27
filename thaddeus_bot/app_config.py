@@ -32,8 +32,8 @@ class AppConfig:
     twitch: TwitchConfig | None
     youtube: YouTubeConfig | None
     poll_interval_seconds: int
+    log_polling: bool
     state_file: Path
-    notify_on_startup: bool
     subscriptions: list[dict[str, Any]]
     dynamic_commands: dict[str, str]
 
@@ -73,8 +73,8 @@ def load_config() -> AppConfig:
         else None,
         youtube=YouTubeConfig(api_key=youtube_payload["api_key"]) if youtube_payload else None,
         poll_interval_seconds=int(payload.get("poll_interval_seconds", 60)),
-        state_file=Path(payload.get("state_file", "state.json")),
-        notify_on_startup=bool(payload.get("notify_on_startup", False)),
+        log_polling=bool(payload.get("log_polling", True)),
+        state_file=Path(payload.get("state_file", "notify.json")),
         subscriptions=payload["subscriptions"],
         dynamic_commands=_parse_dynamic_commands(payload.get("dynamic_commands", [])),
     )

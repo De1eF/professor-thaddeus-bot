@@ -54,6 +54,13 @@ class StreamMonitor:
             raise
 
     async def _run_once(self) -> None:
+        if self._config.log_polling:
+            LOG.info("Poll started for %s subscriptions", len(self._config.subscriptions))
+        checked = 0
+        live_count = 0
+        offline_count = 0
+        error_count = 0
+
         for sub in self._config.subscriptions:
             sub_id = sub["id"]
             platform = sub["platform"].lower()
@@ -64,25 +71,86 @@ class StreamMonitor:
                 is_live, url, title = self._check_live(platform, channel)
             except Exception:
                 LOG.exception("Failed to check stream status for %s", sub_id)
+                error_count += 1
                 continue
 
-            previous = self._state.get(sub_id)
-            self._state[sub_id] = is_live
-            self._save_state()
+            live_message_sent = bool(self._state.get(sub_id, False))
+            checked += 1
+            if is_live:
+                live_count += 1
+            else:
+                offline_count += 1
+            if self._config.log_polling:
+                LOG.info(
+                    "Poll status: id=%s platform=%s channel=%s is_live=%s notified_live=%s title=%s url=%s",
+                    sub_id,
+                    platform,
+                    channel,
+                    is_live,
+                    live_message_sent,
+                    title or "",
+                    url,
+                )
 
-            if previous is None and not self._config.notify_on_startup:
+            if is_live and not live_message_sent:
+                if not await self._send_notification(
+                    sub=sub,
+                    sub_id=sub_id,
+                    platform=platform,
+                    channel=channel,
+                    channel_name=channel_name,
+                    title=title,
+                    url=url,
+                    is_live=True,
+                ):
+                    continue
+                self._state[sub_id] = True
+                self._save_state()
                 continue
 
-            if previous == is_live:
-                continue
+            if not is_live and live_message_sent:
+                if not await self._send_notification(
+                    sub=sub,
+                    sub_id=sub_id,
+                    platform=platform,
+                    channel=channel,
+                    channel_name=channel_name,
+                    title=title,
+                    url=url,
+                    is_live=False,
+                ):
+                    continue
+                self._state[sub_id] = False
+                self._save_state()
 
-            template_key = "live_message" if is_live else "offline_message"
-            template = self._pick_template(sub.get(template_key))
-            if not template:
-                LOG.warning("No %s configured for %s", template_key, sub_id)
-                continue
+        if self._config.log_polling:
+            LOG.info(
+                "Poll complete: checked=%s live=%s offline=%s errors=%s",
+                checked,
+                live_count,
+                offline_count,
+                error_count,
+            )
 
-            text = self._render(template, platform, channel_name, channel, title, url, is_live)
+    async def _send_notification(
+        self,
+        sub: dict[str, Any],
+        sub_id: str,
+        platform: str,
+        channel: str,
+        channel_name: str,
+        title: str | None,
+        url: str,
+        is_live: bool,
+    ) -> bool:
+        template_key = "live_message" if is_live else "offline_message"
+        template = self._pick_template(sub.get(template_key))
+        if not template:
+            LOG.warning("No %s configured for %s", template_key, sub_id)
+            return False
+
+        text = self._render(template, platform, channel_name, channel, title, url, is_live)
+        try:
             if is_live:
                 await self._bot.send_message(
                     chat_id=self._config.telegram.chat_id,
@@ -94,7 +162,12 @@ class StreamMonitor:
                 message_thread_id=self._config.telegram.stream_message_thread_id,
                 text=text,
             )
-            LOG.info("Sent %s notification for %s", "live" if is_live else "offline", sub_id)
+        except Exception:
+            LOG.exception("Failed to send %s notification for %s", "live" if is_live else "offline", sub_id)
+            return False
+
+        LOG.info("Sent %s notification for %s", "live" if is_live else "offline", sub_id)
+        return True
 
     def build_status_report(self) -> str:
         if not self._config.subscriptions:
