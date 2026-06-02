@@ -13,6 +13,21 @@ class TelegramConfig:
     bot_token: str
     chat_id: str
     stream_message_thread_id: int | None
+    daily_message_thread_id: int | None
+
+
+@dataclass
+class DailyMessageEntry:
+    date: str
+    plaintext: str
+    image: str | None
+
+
+@dataclass
+class DailyMessagesConfig:
+    chat_id: str
+    message_thread_id: int | None
+    entries: list[DailyMessageEntry]
 
 
 @dataclass
@@ -36,6 +51,7 @@ class AppConfig:
     state_file: Path
     subscriptions: list[dict[str, Any]]
     dynamic_commands: dict[str, str]
+    daily_messages: DailyMessagesConfig | None
 
 
 def load_config() -> AppConfig:
@@ -52,11 +68,15 @@ def load_config() -> AppConfig:
     youtube_payload = payload.get("youtube")
     chat_id, inferred_thread_id = _parse_chat_and_thread(telegram_payload["chat_id"])
     explicit_stream_thread_id = telegram_payload.get("stream_message_thread_id")
+    explicit_daily_thread_id = telegram_payload.get("daily_message_thread_id")
     legacy_thread_id = telegram_payload.get("message_thread_id")
     stream_message_thread_id = (
         int(explicit_stream_thread_id)
         if explicit_stream_thread_id is not None
         else int(legacy_thread_id) if legacy_thread_id is not None else inferred_thread_id
+    )
+    daily_message_thread_id = (
+        int(explicit_daily_thread_id) if explicit_daily_thread_id is not None else None
     )
 
     return AppConfig(
@@ -64,6 +84,7 @@ def load_config() -> AppConfig:
             bot_token=telegram_payload["bot_token"],
             chat_id=chat_id,
             stream_message_thread_id=stream_message_thread_id,
+            daily_message_thread_id=daily_message_thread_id,
         ),
         twitch=TwitchConfig(
             client_id=twitch_payload["client_id"],
@@ -77,6 +98,11 @@ def load_config() -> AppConfig:
         state_file=Path(payload.get("state_file", "notify.json")),
         subscriptions=payload["subscriptions"],
         dynamic_commands=_parse_dynamic_commands(payload.get("dynamic_commands", [])),
+        daily_messages=_parse_daily_messages(
+            payload.get("daily_messages"),
+            default_chat_id=chat_id,
+            default_message_thread_id=daily_message_thread_id,
+        ),
     )
 
 
@@ -95,7 +121,7 @@ def fetch_remote_resource(resource_path: str) -> tuple[bytes, str]:
     if not resources_base_url:
         raise RuntimeError("THADDEUS_RESOURCES_URL is required for file resources.")
 
-    normalized_base = _normalize_remote_url(resources_base_url)
+    normalized_base = _normalize_remote_url(resources_base_url, branch=_config_branch())
     normalized_path = _normalize_resource_path(resource_path)
     resource_url = _build_resource_url(normalized_base, normalized_path)
     headers, auth = _build_auth()
@@ -120,24 +146,40 @@ def _build_auth() -> tuple[dict[str, str], tuple[str, str] | None]:
     return headers, auth
 
 
-def _normalize_remote_url(remote_url: str) -> str:
+def _config_branch() -> str:
+    return os.getenv("THADDEUS_CONFIG_BRANCH", "main").strip() or "main"
+
+
+def _normalize_remote_url(remote_url: str, branch: str | None = None) -> str:
     parsed = urlparse(remote_url)
-    if parsed.netloc.lower() != "github.com":
+    netloc = parsed.netloc.lower()
+    if netloc == "raw.githubusercontent.com":
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) >= 4:
+            owner = parts[0]
+            repo = parts[1]
+            selected_branch = branch or parts[2]
+            rest = "/".join(parts[3:])
+            base = f"https://raw.githubusercontent.com/{owner}/{repo}/{selected_branch}"
+            return f"{base}/{rest}".rstrip("/") if rest else base
+        return remote_url.rstrip("/")
+
+    if netloc != "github.com":
         return remote_url.rstrip("/")
 
     parts = parsed.path.strip("/").split("/")
     if len(parts) >= 4 and parts[2] in ("blob", "tree"):
         owner = parts[0]
         repo = parts[1]
-        branch = parts[3]
+        selected_branch = branch or parts[3]
         rest = "/".join(parts[4:])
-        base = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}"
+        base = f"https://raw.githubusercontent.com/{owner}/{repo}/{selected_branch}"
         return f"{base}/{rest}".rstrip("/") if rest else base
     return remote_url.rstrip("/")
 
 
 def _normalize_config_url(config_url: str) -> str:
-    return _normalize_remote_url(config_url)
+    return _normalize_remote_url(config_url, branch=_config_branch())
 
 
 def _normalize_resource_path(resource_path: str) -> str:
@@ -178,6 +220,66 @@ def _add_dynamic_command(parsed: dict[str, str], command: Any, message: Any) -> 
     if not normalized_command:
         return
     parsed[normalized_command] = message.strip()
+
+
+def _parse_daily_messages(
+    raw_config: Any,
+    default_chat_id: str,
+    default_message_thread_id: int | None,
+) -> DailyMessagesConfig | None:
+    if not isinstance(raw_config, dict):
+        return None
+
+    raw_entries = raw_config.get("entries", raw_config.get("messages", []))
+    if not isinstance(raw_entries, list):
+        raw_entries = []
+
+    telegram_payload = raw_config.get("telegram")
+    if isinstance(telegram_payload, dict) and "chat_id" in telegram_payload:
+        raw_chat_id = telegram_payload["chat_id"]
+        explicit_thread_id = telegram_payload.get("message_thread_id")
+    else:
+        raw_chat_id = raw_config.get("chat_id")
+        explicit_thread_id = raw_config.get("message_thread_id")
+
+    if raw_chat_id is None:
+        chat_id = default_chat_id
+        inferred_thread_id = None
+    else:
+        chat_id, inferred_thread_id = _parse_chat_and_thread(raw_chat_id)
+
+    message_thread_id = (
+        int(explicit_thread_id)
+        if explicit_thread_id is not None
+        else inferred_thread_id if inferred_thread_id is not None else default_message_thread_id
+    )
+
+    entries: list[DailyMessageEntry] = []
+    for item in raw_entries:
+        if not isinstance(item, dict):
+            continue
+
+        date = str(item.get("date", "")).strip()
+        plaintext = str(item.get("plaintext", "")).strip()
+        image = item.get("image", item.get("image_resource"))
+        image_ref = str(image).strip() if image is not None else None
+
+        if not date or not plaintext:
+            continue
+
+        entries.append(
+            DailyMessageEntry(
+                date=date,
+                plaintext=plaintext,
+                image=image_ref or None,
+            )
+        )
+
+    return DailyMessagesConfig(
+        chat_id=chat_id,
+        message_thread_id=message_thread_id,
+        entries=entries,
+    )
 
 
 def _load_dotenv(path: Path) -> None:

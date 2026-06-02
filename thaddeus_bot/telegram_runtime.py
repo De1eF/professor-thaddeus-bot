@@ -7,6 +7,7 @@ from telegram import BotCommand, InputFile, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from .app_config import fetch_remote_resource, load_config
+from .daily_messages import DailyMessageScheduler
 from .stream_monitor import StreamMonitor
 
 LOG = logging.getLogger("telegram-runtime")
@@ -113,6 +114,10 @@ async def dynamic_command_router(update: Update, context: ContextTypes.DEFAULT_T
 async def on_startup(application: Application) -> None:
     monitor: StreamMonitor = application.bot_data["monitor"]
     application.bot_data["monitor_task"] = application.create_task(monitor.run_forever())
+    daily_scheduler: DailyMessageScheduler = application.bot_data["daily_scheduler"]
+    application.bot_data["daily_scheduler_task"] = application.create_task(
+        daily_scheduler.run_forever()
+    )
     await _refresh_bot_commands(application)
 
 
@@ -130,8 +135,15 @@ async def _refresh_bot_commands(application: Application) -> None:
 
 
 async def on_shutdown(application: Application) -> None:
-    task: asyncio.Task | None = application.bot_data.get("monitor_task")
-    if task:
+    tasks: list[asyncio.Task] = [
+        task
+        for task in (
+            application.bot_data.get("monitor_task"),
+            application.bot_data.get("daily_scheduler_task"),
+        )
+        if task
+    ]
+    for task in tasks:
         task.cancel()
         try:
             await task
@@ -140,15 +152,20 @@ async def on_shutdown(application: Application) -> None:
 
 
 def _log_startup_config(config) -> None:
+    daily_messages_count = (
+        len(config.daily_messages.entries) if config.daily_messages is not None else 0
+    )
     LOG.info(
-        "Startup config: chat_id=%s thread_id=%s poll_interval_seconds=%s log_polling=%s state_file=%s subscriptions=%s dynamic_commands=%s twitch_enabled=%s youtube_enabled=%s",
+        "Startup config: chat_id=%s stream_thread_id=%s daily_thread_id=%s poll_interval_seconds=%s log_polling=%s state_file=%s subscriptions=%s dynamic_commands=%s daily_messages=%s twitch_enabled=%s youtube_enabled=%s",
         config.telegram.chat_id,
         config.telegram.stream_message_thread_id,
+        config.telegram.daily_message_thread_id,
         config.poll_interval_seconds,
         config.log_polling,
         str(config.state_file),
         len(config.subscriptions),
         len(config.dynamic_commands),
+        daily_messages_count,
         bool(config.twitch),
         bool(config.youtube),
     )
@@ -186,9 +203,11 @@ def run_bot(
     )
 
     monitor = StreamMonitor(config, bot=application.bot)
+    daily_scheduler = DailyMessageScheduler(config, bot=application.bot)
     application.bot_data["config"] = config
     application.bot_data["dynamic_commands"] = config.dynamic_commands
     application.bot_data["monitor"] = monitor
+    application.bot_data["daily_scheduler"] = daily_scheduler
 
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(MessageHandler(filters.COMMAND, dynamic_command_router))
