@@ -184,6 +184,8 @@ def _normalize_config_url(config_url: str) -> str:
 
 def _normalize_resource_path(resource_path: str) -> str:
     path = resource_path.strip().lstrip("/")
+    if path.lower().startswith("file:"):
+        path = path[5:].strip().lstrip("/")
     if not path:
         raise RuntimeError("Resource path cannot be empty.")
     if ".." in path.split("/"):

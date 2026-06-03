@@ -37,6 +37,13 @@ python main.py daily-check
 python main.py daily-check --date 06-03
 ```
 
+If the bot is running with Docker Compose, run the same one-off check in a
+temporary container:
+
+```bash
+docker compose run --rm bot python main.py daily-check --date 06-03
+```
+
 ## Remote Config
 
 The app loads config from `THADDEUS_CONFIG_URL` on startup.
@@ -69,11 +76,16 @@ Example:
 
 Set `daily_messages` in remote config to post date-based messages once per day.
 The bot checks every day at 10:00 GMT+2. Dates use `MM-DD`; the year is ignored.
+To force a date check and send the daily message for that date immediately, run
+`python main.py daily-check --date MM-DD`, for example
+`python main.py daily-check --date 06-03`.
 Daily messages are sent to `telegram.chat_id` and use `telegram.daily_message_thread_id`.
 You can override that destination inside `daily_messages` with `chat_id` and `message_thread_id`,
 but the usual setup is one Telegram channel with separate stream and daily-message topics.
 
 If an entry has `image`, the value is fetched from `THADDEUS_RESOURCES_URL`.
+Use the same file reference style as dynamic commands, for example
+`"image": "file:owl-fuck.gif"`.
 The image is sent as a Telegram photo with the plaintext as its caption when
 the caption fits Telegram's photo caption limit. Longer plaintext is sent as a
 separate text message before the photo.
@@ -103,7 +115,7 @@ separate text message before the photo.
       {
         "date": "06-02",
         "plaintext": "Today's reminder.",
-        "image": "owl-fuck.gif"
+        "image": "file:owl-fuck.gif"
       },
       {
         "date": "06-03",
